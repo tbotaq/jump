@@ -1,0 +1,74 @@
+name: Backend
+
+on: push
+
+env:
+  BUNDLE_PATH: vendor/bundle
+  RAILS_ENV: test
+  JUMP_DB_HOST: mysql
+  JUMP_DB_USER_NAME: root
+  JUMP_DB_PASSWORD: password
+  JUMP_CACHE_HOST: redis
+  JUMP_CACHE_PORT: 6379
+  SECRET_KEY_BASE: foo
+  TWITTER_CONSUMER_KEY: foo
+  TWITTER_CONSUMER_SECRET: foo
+  SENTRY_CLIENT_KEY: foo
+  FRONTEND_HOST: foo
+  AUTHORIZED_HOST: foo
+  SLACK_SLOW_QUERY_WEBHOOK_URL: foo
+  ADMIN_USER_TWITTER_ID: 123
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: ruby:3.0.2
+      env:
+        BUNDLE_PATH: ${{ env.BUNDLE_PATH }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/${{ env.BUNDLE_PATH }}
+          key: ${{ runner.os }}-gem-${{ hashFiles('Gemfile.lock') }}
+      - name: Install dependencies
+        run: |
+          gem install -N bundler
+          bundle config set path $BUNDLE_PATH
+          bundle check || bundle install --jobs 4
+      - name: Run rubocop
+        run: bundle exec rubocop
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+      redis:
+        image: redis:5
+    container:
+      image: ruby:3.0.2
+      env:
+        BUNDLE_PATH: ${{ env.BUNDLE_PATH }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/${{ env.BUNDLE_PATH }}
+          key: ${{ runner.os }}-gem-${{ hashFiles('Gemfile.lock') }}
+      - name: Install dependencies
+        run: |
+          gem install -N bundler
+          bundle config set path $BUNDLE_PATH
+          bundle check || bundle install --jobs 4
+      - name: Setup database
+        run: |
+          bundle exec rake db:create
+          bundle exec rake db:schema:load
+      - name: Run test
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: bundle exec rspec --format progress spec
